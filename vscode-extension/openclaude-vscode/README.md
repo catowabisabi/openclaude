@@ -1,11 +1,14 @@
 # OpenClaude VS Code Extension
 
-A sleek, terminal-first VS Code companion for OpenClaude.
+A sleek VS Code companion for OpenClaude with a visual **Control Center** plus terminal-first workflows.
 
 ## Features
 
-- **Launch OpenClaude instantly** in the integrated terminal via `OpenClaude: Launch in Terminal`
-- **Open repository/docs quickly** via `OpenClaude: Open Repository`
+- **Control Center sidebar UI** in the Activity Bar:
+  - Launch OpenClaude
+  - Open repository/docs
+  - Open VS Code theme picker
+- **Terminal launch command**: `OpenClaude: Launch in Terminal`
 - **Built-in dark theme**: `OpenClaude Terminal Black` (terminal-inspired, low-glare, neon accents)
 
 ## Requirements
@@ -15,6 +18,7 @@ A sleek, terminal-first VS Code companion for OpenClaude.
 
 ## Commands
 
+- `OpenClaude: Open Control Center`
 - `OpenClaude: Launch in Terminal`
 - `OpenClaude: Open Repository`
 

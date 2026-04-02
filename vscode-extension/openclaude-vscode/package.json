@@ -1,8 +1,8 @@
 {
   "name": "openclaude-vscode",
   "displayName": "OpenClaude",
-  "description": "Sleek terminal-first VS Code extension for launching OpenClaude and using a matching dark hacker-style theme.",
-  "version": "0.1.0",
+  "description": "Sleek VS Code extension for OpenClaude with a visual Control Center and terminal-aligned theme.",
+  "version": "0.1.1",
   "publisher": "devnull-bootloader",
   "engines": {
     "vscode": "^1.95.0"
@@ -13,7 +13,9 @@
   ],
   "activationEvents": [
     "onCommand:openclaude.start",
-    "onCommand:openclaude.openDocs"
+    "onCommand:openclaude.openDocs",
+    "onCommand:openclaude.openControlCenter",
+    "onView:openclaude.controlCenter"
   ],
   "main": "./src/extension.js",
   "contributes": {
@@ -27,8 +29,31 @@
         "command": "openclaude.openDocs",
         "title": "OpenClaude: Open Repository",
         "category": "OpenClaude"
+      },
+      {
+        "command": "openclaude.openControlCenter",
+        "title": "OpenClaude: Open Control Center",
+        "category": "OpenClaude"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "openclaude",
+          "title": "OpenClaude",
+          "icon": "media/openclaude.svg"
+        }
+      ]
+    },
+    "views": {
+      "openclaude": [
+        {
+          "id": "openclaude.controlCenter",
+          "name": "Control Center",
+          "type": "webview"
+        }
+      ]
+    },
     "configuration": {
       "title": "OpenClaude",
       "properties": {
