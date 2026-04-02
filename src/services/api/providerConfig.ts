@@ -210,7 +210,19 @@ function isCodexAlias(model: string): boolean {
 export function isLocalProviderUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase()
+    let hostname = new URL(baseUrl).hostname.toLowerCase()
+
+    // Strip IPv6 brackets added by the URL parser (e.g. "[::1]" -> "::1")
+    if (hostname.startsWith('[') && hostname.endsWith(']')) {
+      hostname = hostname.slice(1, -1)
+    }
+
+    // Strip RFC6874 IPv6 zone identifiers (e.g. "fe80::1%25en0" -> "fe80::1")
+    const zoneIdIndex = hostname.indexOf('%25')
+    if (zoneIdIndex !== -1) {
+      hostname = hostname.slice(0, zoneIdIndex)
+    }
+
     if (LOCALHOST_HOSTNAMES.has(hostname) || hostname === '0.0.0.0') {
       return true
     }
@@ -220,7 +232,9 @@ export function isLocalProviderUrl(baseUrl: string | undefined): boolean {
 
     const ipVersion = isIP(hostname)
     if (ipVersion === 4) {
-      return isPrivateIpv4Address(hostname)
+      // Treat the full 127.0.0.0/8 loopback range as local
+      const firstOctet = Number.parseInt(hostname.split('.', 1)[0] ?? '', 10)
+      return firstOctet === 127 || isPrivateIpv4Address(hostname)
     }
     if (ipVersion === 6) {
       return isPrivateIpv6Address(hostname)
