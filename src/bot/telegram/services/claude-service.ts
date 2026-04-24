@@ -36,7 +36,7 @@ export class ClaudeService {
     });
 
     const proto = grpc.loadPackageDefinition(packageDef) as any;
-    this.client = new proto.openclaude.AgentService(
+    this.client = new proto.openclaude.v1.AgentService(
       `${host}:${port}`,
       grpc.credentials.createInsecure()
     );
@@ -47,49 +47,67 @@ export class ClaudeService {
   runAgent(
     request: AgentRequest,
     callbacks: AgentStreamCallbacks
-  ): grpc.ClientWritableStream<any> {
-    const stream = this.client.runAgent(
-      {
-        sessionId: request.sessionId,
-        prompt: request.prompt,
-        workingDirectory: request.workingDirectory,
-        userId: String(request.userId),
-      },
-      this.metadata,
-      (err: Error | null, res: any) => {
-        if (err) {
-          callbacks.onError(err);
-        } else {
-          callbacks.onComplete(
-            res.content ?? "",
-            res.toolsUsed ?? [],
-            res.costUsd ?? 0
-          );
-        }
+  ): grpc.ClientDuplexStream<any> {
+    const stream = this.client.Chat(this.metadata, (err: Error | null, res: any) => {
+      if (err) {
+        callbacks.onError(err);
       }
-    );
+    });
 
-    stream.on("data", (res: any) => {
-      const update: StreamUpdate = { type: "text", content: res.content };
-      if (res.toolName) {
-        update.type = res.toolName === "__end__" ? "tool_end" : "tool_start";
-        update.toolName = res.toolName !== "__end__" ? res.toolName : undefined;
+    stream.on("data", (msg: any) => {
+      if (msg.text_chunk) {
+        callbacks.onUpdate({
+          type: "text",
+          content: msg.text_chunk.text,
+        });
+      } else if (msg.tool_start) {
+        callbacks.onUpdate({
+          type: "tool_start",
+          toolName: msg.tool_start.tool_name,
+          toolInput: msg.tool_start.arguments_json,
+          toolUseId: msg.tool_start.tool_use_id,
+        });
+      } else if (msg.tool_result) {
+        callbacks.onUpdate({
+          type: "tool_end",
+          toolName: msg.tool_result.tool_name,
+          toolResult: msg.tool_result.output,
+          toolUseId: msg.tool_result.tool_use_id,
+        });
+      } else if (msg.action_required) {
+        callbacks.onUpdate({
+          type: "approval_required",
+          promptId: msg.action_required.prompt_id,
+          question: msg.action_required.question,
+        });
+      } else if (msg.done) {
+        callbacks.onComplete(
+          msg.done.full_text,
+          [],
+          0
+        );
+      } else if (msg.error) {
+        callbacks.onError(new Error(msg.error.message));
       }
-      if (res.approvalRequired) {
-        update.type = "approval_required";
-        update.promptId = res.promptId;
-        update.question = res.question;
-      }
-      callbacks.onUpdate(update);
     });
 
     stream.on("error", (err: Error) => {
       callbacks.onError(err);
     });
 
+    stream.write({
+      request: {
+        message: request.prompt,
+        working_directory: request.workingDirectory,
+        session_id: request.sessionId,
+        model: "",
+      },
+    });
+
     if (request.interruptSignal) {
       request.interruptSignal.addEventListener("abort", () => {
-        stream.write({ interrupt: true });
+        stream.write({ cancel: { reason: "User cancelled" } });
+        stream.end();
       });
     }
 

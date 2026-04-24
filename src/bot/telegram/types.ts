@@ -6,6 +6,7 @@ export interface StreamUpdate {
   toolName?: string;
   toolInput?: string;
   toolResult?: string;
+  toolUseId?: string;
   promptId?: string;
   question?: string;
 }
