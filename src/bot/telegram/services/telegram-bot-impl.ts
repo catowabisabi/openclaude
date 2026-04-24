@@ -1,11 +1,12 @@
 import { Client, Telegram } from "telegram";
-import type { Message, Update, CallbackQuery } from "telegram";
+import type { Message, Update, CallbackQuery, Voice } from "telegram";
 import type { TelegramBot, TelegramSettings } from "../types.js";
 import { MessageOrchestrator } from "../services/orchestrator.js";
 import { createAuthMiddleware } from "../middleware/auth.js";
 import { createRateLimitMiddleware } from "../middleware/rate-limit.js";
 import { createSecurityMiddleware } from "../middleware/security.js";
 import { parseTelegramSettings } from "../config/telegram-settings.js";
+import { VoiceHandler } from "../services/voice-handler.js";
 
 export interface TelegramBotOptions {
   botToken: string;
@@ -21,6 +22,7 @@ export class TelegramBotImpl implements TelegramBot {
   private authMw: ReturnType<typeof createAuthMiddleware>;
   private rateLimitMw: ReturnType<typeof createRateLimitMiddleware>;
   private securityMw: ReturnType<typeof createSecurityMiddleware>;
+  private voiceHandler: VoiceHandler;
   private isRunning = false;
 
   constructor(token: string, options?: Partial<TelegramBotOptions>) {
@@ -31,6 +33,7 @@ export class TelegramBotImpl implements TelegramBot {
       ...options?.settings,
     });
     this.orchestrator = new MessageOrchestrator(this.client as any, this.settings);
+    this.voiceHandler = new VoiceHandler(this.settings);
 
     this.authMw = createAuthMiddleware(this.settings.allowedUsers);
     this.rateLimitMw = createRateLimitMiddleware(
@@ -116,6 +119,30 @@ export class TelegramBotImpl implements TelegramBot {
       const chatId = message.chat.id;
       const userId = message.from.id;
       const text = message.text;
+      const voice = message.voice as Voice | undefined;
+
+      if (voice && this.settings.features?.voiceMessages === true) {
+        const fileSize = voice.file_size ?? 0;
+        const duration = voice.duration ?? 0;
+        const caption = text ?? undefined;
+        try {
+          const result = await this.voiceHandler.processVoiceMessage(
+            voice.file_id,
+            duration,
+            fileSize,
+            async (fileId: string) => {
+              const file = await this.client.getFile(fileId);
+              return Buffer.from(await file.download());
+            }
+          );
+          await this.orchestrator.handleMessage(chatId, userId, result.prompt);
+        } catch (err) {
+          await this.client.sendMessage(chatId, {
+            text: `Voice transcription failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+        return;
+      }
 
       if (text === "/interrupt") {
         await this.orchestrator.handleInterrupt(userId);

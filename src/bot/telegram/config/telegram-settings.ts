@@ -13,6 +13,16 @@ const FeaturesSchema = z.object({
   quickActions: z.boolean().default(true),
 });
 
+const VoiceSchema = z.object({
+  provider: z.enum(["mistral", "openai", "local"]).default("mistral"),
+  mistralApiKey: z.string().optional(),
+  openaiApiKey: z.string().optional(),
+  whisperCppBinaryPath: z.string().optional(),
+  whisperCppModelPath: z.string().optional(),
+  model: z.string().default("mistral-voxtral-7b"),
+  maxFileSizeMb: z.number().default(20),
+});
+
 export const TelegramSettingsSchema = z.object({
   botToken: z.string().min(1),
   botUsername: z.string().optional(),
@@ -27,6 +37,7 @@ export const TelegramSettingsSchema = z.object({
   webhookPort: z.number().default(50052),
   rateLimit: RateLimitSchema.default(),
   features: FeaturesSchema.default(),
+  voice: VoiceSchema.default(),
 });
 
 export type TelegramSettings = z.infer<typeof TelegramSettingsSchema>;
