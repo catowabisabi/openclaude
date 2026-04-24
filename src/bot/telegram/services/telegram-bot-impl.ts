@@ -1,5 +1,5 @@
 import { Client, Telegram } from "telegram";
-import type { Message, Update } from "telegram";
+import type { Message, Update, CallbackQuery } from "telegram";
 import type { TelegramBot, TelegramSettings } from "../types.js";
 import { MessageOrchestrator } from "../services/orchestrator.js";
 import { createAuthMiddleware } from "../middleware/auth.js";
@@ -75,6 +75,22 @@ export class TelegramBotImpl implements TelegramBot {
 
       if (text) {
         await this.orchestrator.handleMessage(chatId, userId, text);
+      }
+    }
+
+    const callbackQuery = (update as any).callback_query as CallbackQuery | undefined;
+    if (callbackQuery?.message?.chat?.id && callbackQuery?.from?.id && callbackQuery?.data) {
+      const chatId = callbackQuery.message.chat.id;
+      const userId = callbackQuery.from.id;
+      const data = callbackQuery.data;
+      const parts = data.split(":");
+      if (parts.length === 2) {
+        const action = parts[0];
+        const promptId = parts[1];
+        if (action === "approve" || action === "deny") {
+          await this.orchestrator.handleApprovalResponse(chatId, userId, promptId, action === "approve");
+          await this.client.answerCallbackQuery(callbackQuery.id);
+        }
       }
     }
   }

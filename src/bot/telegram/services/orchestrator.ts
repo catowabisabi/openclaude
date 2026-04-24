@@ -1,19 +1,31 @@
-import type { Client } from "telegram";
+import type { Client, TelegramClient } from "telegram";
 import type {
-  AuthContext,
   TelegramSettings,
   ActiveRequest,
   Session,
   StreamUpdate,
 } from "../types.js";
-import { getClaudeService } from "../services/claude-service.js";
-import { validateInput, validateFilePath, validateToolName } from "../middleware/security.js";
+import { getClaudeService, type ClaudeService } from "../services/claude-service.js";
+import { validateInput } from "../middleware/security.js";
+
+interface PendingApproval {
+  promptId: string;
+  question: string;
+  resolve: (approved: boolean) => void;
+  createdAt: Date;
+}
+
+interface ApprovalHandlers {
+  onApprovalRequest: (chatId: number, promptId: string, question: string) => Promise<void>;
+}
 
 export class MessageOrchestrator {
   private client: Client;
   private settings: TelegramSettings;
   private activeRequests: Map<number, ActiveRequest> = new Map();
   private sessions: Map<string, Session> = new Map();
+  private pendingApprovals: Map<string, PendingApproval> = new Map();
+  private streamByUser: Map<number, ReturnType<ClaudeService["runAgent"]>> = new Map();
 
   constructor(client: Client, settings: TelegramSettings) {
     this.client = client;
@@ -57,21 +69,37 @@ export class MessageOrchestrator {
         },
         {
           onUpdate: (update: StreamUpdate) => {
-            this.handleStreamUpdate(chatId, update);
+            this.handleStreamUpdate(chatId, userId, update);
           },
           onComplete: async (content, toolsUsed, cost) => {
             await this.sendMessage(chatId, content);
+            this.streamByUser.delete(userId);
             this.activeRequests.delete(userId);
           },
           onError: async (error: Error) => {
             await this.sendMessage(chatId, `Error: ${error.message}`);
+            this.streamByUser.delete(userId);
             this.activeRequests.delete(userId);
           },
         }
       );
+      this.streamByUser.set(userId, stream);
     } catch (err) {
       await this.sendMessage(chatId, `Failed to start: ${err}`);
       this.activeRequests.delete(userId);
+    }
+  }
+
+  async handleApprovalResponse(
+    chatId: number,
+    userId: number,
+    promptId: string,
+    approved: boolean
+  ): Promise<void> {
+    const pending = this.pendingApprovals.get(promptId);
+    if (pending) {
+      pending.resolve(approved);
+      this.pendingApprovals.delete(promptId);
     }
   }
 
@@ -80,15 +108,15 @@ export class MessageOrchestrator {
     if (!active) return;
 
     active.interruptEvent?.abort();
-    this.activeRequests.delete(userId);
-
-    const claude = getClaudeService();
-    if (active.sessionId) {
-      await claude.interruptAgent(active.sessionId);
+    const stream = this.streamByUser.get(userId);
+    if (stream) {
+      stream.cancel();
     }
+    this.streamByUser.delete(userId);
+    this.activeRequests.delete(userId);
   }
 
-  private handleStreamUpdate(chatId: number, update: StreamUpdate): void {
+  private handleStreamUpdate(chatId: number, userId: number, update: StreamUpdate): void {
     switch (update.type) {
       case "text":
         if (update.content) {
@@ -96,18 +124,57 @@ export class MessageOrchestrator {
         }
         break;
       case "approval_required":
-        if (update.question) {
-          this.sendMessage(chatId, `Approval needed: ${update.question}`);
+        if (update.promptId && update.question) {
+          const promptId = update.promptId;
+          const question = update.question;
+          const promise = new Promise<boolean>((resolve) => {
+            this.pendingApprovals.set(promptId, {
+              promptId,
+              question,
+              resolve,
+              createdAt: new Date(),
+            });
+          });
+
+          promise.then((approved) => {
+            const stream = this.streamByUser.get(userId);
+            if (stream) {
+              stream.write({
+                input: {
+                  prompt_id: promptId,
+                  reply: approved ? "yes" : "no",
+                },
+              });
+            }
+          });
+
+          this.sendApprovalRequest(chatId, promptId, question);
         }
         break;
       case "tool_start":
-        this.sendMessage(chatId, `Using tool: ${update.toolName}`);
+        if (update.toolName) {
+          this.sendMessage(chatId, `Using tool: ${update.toolName}`);
+        }
         break;
     }
   }
 
+  private async sendApprovalRequest(chatId: number, promptId: string, question: string): Promise<void> {
+    const client = this.client as TelegramClient;
+    await client.sendMessage(chatId, {
+      text: `Approval needed: ${question}`,
+      replyMarkup: {
+        inlineKeyboard: [[
+          { text: "✅ Approve", callbackData: `approve:${promptId}` },
+          { text: "❌ Deny", callbackData: `deny:${promptId}` },
+        ]],
+      },
+    });
+  }
+
   private async sendMessage(chatId: number, text: string): Promise<void> {
-    await this.client.sendMessage(chatId, { text });
+    const client = this.client as TelegramClient;
+    await client.sendMessage(chatId, { text });
   }
 
   private getOrCreateSession(userId: number): Session {
