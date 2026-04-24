@@ -54,6 +54,62 @@ export class TelegramBotImpl implements TelegramBot {
     });
   }
 
+  private async handleCommand(chatId: number, userId: number, command: string, args: string): Promise<void> {
+    switch (command) {
+      case "/start":
+        await this.client.sendMessage(chatId, {
+          text: "Claude Code Telegram Bot ready.\n\nCommands:\n/new - Start a new conversation\n/status - Check current session status\n/verbose [0|1|2] - Set verbosity level\n/repo [name] - List or switch workspace",
+        });
+        break;
+
+      case "/new":
+        this.orchestrator.clearSession(userId);
+        await this.client.sendMessage(chatId, {
+          text: "Starting a new conversation.",
+        });
+        break;
+
+      case "/status": {
+        const active = this.orchestrator.getActiveRequest(userId);
+        if (active) {
+          await this.client.sendMessage(chatId, { text: "Processing a request..." });
+        } else {
+          await this.client.sendMessage(chatId, { text: "Idle. Ready for your next request." });
+        }
+        break;
+      }
+
+      case "/verbose": {
+        const level = parseInt(args, 10);
+        if (isNaN(level) || level < 0 || level > 2) {
+          await this.client.sendMessage(chatId, {
+            text: "Usage: /verbose 0|1|2\n\n0 = quiet, 1 = normal, 2 = detailed",
+          });
+        } else {
+          this.orchestrator.setVerboseLevel(userId, level);
+          await this.client.sendMessage(chatId, { text: `Verbosity set to ${level}` });
+        }
+        break;
+      }
+
+      case "/repo":
+        if (args) {
+          this.orchestrator.switchWorkspace(userId, args);
+          await this.client.sendMessage(chatId, { text: `Switched to workspace: ${args}` });
+        } else {
+          const workspaces = this.orchestrator.listWorkspaces();
+          const text = workspaces.length > 0
+            ? `Available workspaces:\n${workspaces.map(w => `• ${w}`).join("\n")}`
+            : "No workspaces configured.";
+          await this.client.sendMessage(chatId, { text });
+        }
+        break;
+
+      default:
+        await this.client.sendMessage(chatId, { text: "Unknown command." });
+    }
+  }
+
   private async handleUpdate(update: Update): Promise<void> {
     const message = (update as any).message as Message | undefined;
     if (!message?.messageThreadId && message?.chat?.id && message?.from?.id) {
@@ -61,15 +117,16 @@ export class TelegramBotImpl implements TelegramBot {
       const userId = message.from.id;
       const text = message.text;
 
-      if (text === "/start") {
-        await this.client.sendMessage(chatId, {
-          text: "Claude Code Telegram Bot ready.",
-        });
+      if (text === "/interrupt") {
+        await this.orchestrator.handleInterrupt(userId);
         return;
       }
 
-      if (text === "/interrupt") {
-        await this.orchestrator.handleInterrupt(userId);
+      if (text && text.startsWith("/")) {
+        const parts = text.split(" ");
+        const command = parts[0];
+        const args = parts.slice(1).join(" ");
+        await this.handleCommand(chatId, userId, command, args);
         return;
       }
 

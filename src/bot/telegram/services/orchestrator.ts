@@ -26,6 +26,8 @@ export class MessageOrchestrator {
   private sessions: Map<string, Session> = new Map();
   private pendingApprovals: Map<string, PendingApproval> = new Map();
   private streamByUser: Map<number, ReturnType<ClaudeService["runAgent"]>> = new Map();
+  private verboseLevels: Map<number, number> = new Map();
+  private workspaces: string[] = [];
 
   constructor(client: Client, settings: TelegramSettings) {
     this.client = client;
@@ -198,5 +200,40 @@ export class MessageOrchestrator {
 
   getActiveRequest(userId: number): ActiveRequest | undefined {
     return this.activeRequests.get(userId);
+  }
+
+  clearSession(userId: number): void {
+    const key = String(userId);
+    const session = this.sessions.get(key);
+    if (session) {
+      session.isExpired = true;
+      this.sessions.delete(key);
+    }
+  }
+
+  setVerboseLevel(userId: number, level: number): void {
+    this.verboseLevels.set(userId, level);
+  }
+
+  getVerboseLevel(userId: number): number {
+    return this.verboseLevels.get(userId) ?? 1;
+  }
+
+  switchWorkspace(userId: number, workspace: string): void {
+    const key = String(userId);
+    const session = this.sessions.get(key);
+    if (session) {
+      session.workingDirectory = workspace;
+    }
+  }
+
+  listWorkspaces(): string[] {
+    return this.workspaces;
+  }
+
+  addWorkspace(workspace: string): void {
+    if (!this.workspaces.includes(workspace)) {
+      this.workspaces.push(workspace);
+    }
   }
 }
