@@ -1,5 +1,5 @@
-import { Client, Telegram } from "gramjs";
-import type { Message, Update } from "gramjs";
+import { Client, Telegram } from "telegram";
+import type { Message, Update } from "telegram";
 import type { TelegramBot, TelegramSettings } from "../types.js";
 import { MessageOrchestrator } from "../services/orchestrator.js";
 import { createAuthMiddleware } from "../middleware/auth.js";

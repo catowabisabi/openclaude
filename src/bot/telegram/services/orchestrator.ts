@@ -1,4 +1,4 @@
-import type { Client } from "gramjs";
+import type { Client } from "telegram";
 import type {
   AuthContext,
   TelegramSettings,

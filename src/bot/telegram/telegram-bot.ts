@@ -1,4 +1,4 @@
-import { Client } from "gramjs";
+import { Client } from "telegram";
 import type { TelegramSettings } from "./types.js";
 import type { TelegramBot as TelegramBotInterface } from "./types.js";
 import { parseTelegramSettings } from "./config/telegram-settings.js";

@@ -3942,6 +3942,29 @@ async function run(): Promise<CommanderCommand> {
     await mcpResetChoicesHandler();
   });
 
+  // claude telegram
+  const telegram = program.command('telegram').description('Start Telegram bot').configureHelp(createSortedHelpConfig());
+  telegram.command('start').description('Start the Telegram bot').option('--token <token>', 'Bot token from @BotFather').option('--grpc-host <host>', 'gRPC host', 'localhost').option('--grpc-port <port>', 'gRPC port', '50051').action(async (opts: {
+    token?: string;
+    grpcHost?: string;
+    grpcPort?: string;
+  }) => {
+    const {
+      runTelegramCli
+    } = await import('./bot/telegram/cli.js');
+    const args = ['node', 'telegram', '--telegram'];
+    if (opts.token) {
+      args.push('--token', opts.token);
+    }
+    if (opts.grpcHost) {
+      args.push('--grpc-host', opts.grpcHost);
+    }
+    if (opts.grpcPort) {
+      args.push('--grpc-port', opts.grpcPort);
+    }
+    await runTelegramCli(args);
+  });
+
   // claude server
   if (feature('DIRECT_CONNECT')) {
     program.command('server').description('Start a Claude Code session server').option('--port <number>', 'HTTP port', '0').option('--host <string>', 'Bind address', '0.0.0.0').option('--auth-token <token>', 'Bearer token for auth').option('--unix <path>', 'Listen on a unix domain socket').option('--workspace <dir>', 'Default working directory for sessions that do not specify cwd').option('--idle-timeout <ms>', 'Idle timeout for detached sessions in ms (0 = never expire)', '600000').option('--max-sessions <n>', 'Maximum concurrent sessions (0 = unlimited)', '32').action(async (opts: {
