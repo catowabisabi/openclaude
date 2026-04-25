@@ -7,6 +7,7 @@ import type {
 } from "../types.js";
 import { getClaudeService, type ClaudeService } from "../services/claude-service.js";
 import { validateInput } from "../middleware/security.js";
+import { ResponseFormatter } from "../utils/formatter.js";
 
 interface PendingApproval {
   promptId: string;
@@ -22,6 +23,7 @@ interface ApprovalHandlers {
 export class MessageOrchestrator {
   private client: Client;
   private settings: TelegramSettings;
+  private formatter: ResponseFormatter;
   private activeRequests: Map<number, ActiveRequest> = new Map();
   private sessions: Map<string, Session> = new Map();
   private pendingApprovals: Map<string, PendingApproval> = new Map();
@@ -32,6 +34,7 @@ export class MessageOrchestrator {
   constructor(client: Client, settings: TelegramSettings) {
     this.client = client;
     this.settings = settings;
+    this.formatter = new ResponseFormatter();
   }
 
   async handleMessage(
@@ -176,7 +179,10 @@ export class MessageOrchestrator {
 
   private async sendMessage(chatId: number, text: string): Promise<void> {
     const client = this.client as TelegramClient;
-    await client.sendMessage(chatId, { text });
+    const messages = this.formatter.formatClaudeResponse(text);
+    for (const msg of messages) {
+      await client.sendMessage(chatId, { text: msg.text });
+    }
   }
 
   private getOrCreateSession(userId: number): Session {
