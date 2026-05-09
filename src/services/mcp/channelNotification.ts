@@ -24,6 +24,7 @@ import { z } from 'zod/v4'
 import {
   type ChannelEntry,
   getAllowedChannels,
+  setAllowedChannels,
 } from '../../bootstrap/state.js'
 import { CHANNEL_TAG } from '../../constants/xml.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -32,6 +33,7 @@ import { escapeXmlAttr } from '../../utils/xml.js'
 import {
   type ChannelAllowlistEntry,
   getChannelAllowlist,
+  isChannelAllowlisted,
   isChannelsEnabled,
 } from './channelAllowlist.js'
 
@@ -226,9 +228,23 @@ export function gateChannelServer(
 
   // User-level session opt-in. A server must be explicitly listed in
   // --channels to push inbound this session — protects against a trusted
-  // server surprise-adding the capability. No auto-registration: even
-  // allowlisted plugins require explicit --channels opt-in.
-  const entry = findChannelEntry(serverName, getAllowedChannels())
+  // server surprise-adding the capability.
+  // OpenClaude: allowlisted channel plugins auto-register when they connect,
+  // so users don't need the --channels flag for approved plugins.
+  let entry = findChannelEntry(serverName, getAllowedChannels())
+  if (!entry && pluginSource && isChannelAllowlisted(pluginSource)) {
+    const parsed = parsePluginIdentifier(pluginSource)
+    if (parsed.name && parsed.marketplace) {
+      const autoEntry: ChannelEntry = {
+        kind: 'plugin',
+        name: parsed.name,
+        marketplace: parsed.marketplace,
+        dev: false,
+      }
+      setAllowedChannels([...getAllowedChannels(), autoEntry])
+      entry = findChannelEntry(serverName, getAllowedChannels())
+    }
+  }
   if (!entry) {
     return {
       action: 'skip',

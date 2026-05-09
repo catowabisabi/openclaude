@@ -189,7 +189,7 @@ Inside OpenClaude:
 3. Restart OpenClaude or run `/reload-plugins`
 4. Send a message to your bot on Telegram — Claude will receive and reply
 
-Approved channel plugins (Telegram, Discord, iMessage) are auto-registered when they connect. No `--channels` flag needed.
+Approved channel plugins (Telegram, Discord, iMessage) are auto-registered when they connect. No `--channels` flag needed for these official plugins.
 
 ### Custom / development channels
 
