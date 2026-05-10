@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Computes the auto-allow rules for a channel server. Extracted from the
  * inline logic in useManageMCPConnections/print.ts so the trust boundary
  * can be tested independently.
