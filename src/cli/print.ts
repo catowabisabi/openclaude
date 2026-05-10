@@ -4828,7 +4828,7 @@ function reregisterChannelHandlerAfterReconnect(
   connection: MCPServerConnection,
   setAppState: (f: (prev: AppState) => AppState) => void,
 ): void {
-  if (false /* channels always enabled */) return
+  if (!isChannelsEnabled()) return
   if (connection.type !== 'connected') return
 
   const gate = gateChannelServer(

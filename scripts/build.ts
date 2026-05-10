@@ -20,7 +20,6 @@ const version = pkg.version
 // Most Anthropic-internal features stay off; open-build features can be
 // selectively enabled here when their full source exists in the mirror.
 const featureFlags: Record<string, boolean> = {
-<<<<<<< HEAD
   // ── Disabled: require Anthropic infrastructure or missing source ─────
   VOICE_MODE: false,              // Push-to-talk STT via claude.ai OAuth endpoint
   PROACTIVE: false,               // Autonomous agent mode (missing proactive/ module)
@@ -36,7 +35,7 @@ const featureFlags: Record<string, boolean> = {
   WEB_BROWSER_TOOL: false,        // Built-in browser automation (source not mirrored)
   CHICAGO_MCP: false,             // Computer-use MCP (native Swift modules stubbed)
   COWORKER_TYPE_TELEMETRY: false, // Telemetry for agent/coworker type classification
-  MCP_SKILLS: false,              // Dynamic MCP skill discovery (src/skills/mcpSkills.ts not mirrored; enabling this causes "fetchMcpSkillsForClient is not a function" when MCP servers with resources connect — see #856)
+  MCP_SKILLS: false,              // Dynamic MCP skill discovery
 
   // ── Enabled: upstream defaults ──────────────────────────────────────
   COORDINATOR_MODE: true,             // Multi-agent coordinator with worker delegation
@@ -61,29 +60,6 @@ const featureFlags: Record<string, boolean> = {
   VERIFICATION_AGENT: true,           // Built-in read-only agent for test/verification
   PROMPT_CACHE_BREAK_DETECTION: true, // Detect & log unexpected prompt cache invalidations
   HOOK_PROMPTS: true,                 // Allow tools to request interactive user prompts
-  VOICE_MODE: false,
-  PROACTIVE: false,
-  KAIROS: false,
-  BRIDGE_MODE: false,
-  DAEMON: false,
-  AGENT_TRIGGERS: false,
-  MONITOR_TOOL: false,
-  ABLATION_BASELINE: false,
-  DUMP_SYSTEM_PROMPT: false,
-  CACHED_MICROCOMPACT: false,
-  COORDINATOR_MODE: false,
-  CONTEXT_COLLAPSE: false,
-  COMMIT_ATTRIBUTION: false,
-  TEAMMEM: false,
-  UDS_INBOX: false,
-  BG_SESSIONS: false,
-  AWAY_SUMMARY: false,
-  TRANSCRIPT_CLASSIFIER: false,
-  WEB_BROWSER_TOOL: false,
-  MESSAGE_ACTIONS: false,
-  BUDDY: true,
-  CHICAGO_MCP: false,
-  COWORKER_TYPE_TELEMETRY: false,
   KAIROS_CHANNELS: true,              // Channel messaging (Telegram, Discord, iMessage) via MCP
 }
 

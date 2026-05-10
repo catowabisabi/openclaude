@@ -35,8 +35,8 @@ export function computeChannelAutoAllowRules(
  * deduplicating. Returns null if no new rules need to be added.
  */
 export function mergeAutoAllowRules(
-  existingRules: string[],
-  newRules: string[],
+  existingRules: readonly string[],
+  newRules: readonly string[],
 ): string[] | null {
   const toAdd = newRules.filter(rule => !existingRules.includes(rule))
   if (toAdd.length === 0) return null

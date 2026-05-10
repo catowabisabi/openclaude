@@ -4,8 +4,9 @@
  *     server-kind, marketplace verification
  *   - findChannelEntry(): plugin vs server matching
  *
- * These validate that the OpenClaude trust model: explicit opt-in via
- * --channels for all entries (no auto-registration).
+ * These validate the OpenClaude trust model: allowlisted channel plugins
+ * auto-register when they connect; custom/unsigned servers require
+ * explicit --channels opt-in.
  */
 import {
   describe,
@@ -17,12 +18,15 @@ import {
 } from 'bun:test'
 import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js'
 import type { ChannelEntry } from '../../bootstrap/state.js'
+import {
+  getAllowedChannels,
+  setAllowedChannels,
+} from '../../bootstrap/state.js'
 
 // ---------------------------------------------------------------------------
 // Module-level mocks — isolate from real global state
 // ---------------------------------------------------------------------------
 
-let mockAllowedChannels: ChannelEntry[] = []
 let mockChannelsEnabled = true
 const mockAllowlist = [
   { marketplace: 'claude-plugins-official', plugin: 'telegram' },
@@ -32,21 +36,23 @@ const mockAllowlist = [
 ]
 
 beforeEach(() => {
-  mockAllowedChannels = []
   mockChannelsEnabled = true
-
-  mock.module('../../bootstrap/state.js', () => ({
-    getAllowedChannels: () => mockAllowedChannels,
-  }))
+  setAllowedChannels([])
 
   mock.module('./channelAllowlist.js', () => ({
     getChannelAllowlist: () => mockAllowlist,
+    isChannelAllowlisted: (pluginSource: string) =>
+      mockAllowlist.some((e) => {
+        const parts = pluginSource.split('@')
+        return parts.length === 2 && e.plugin === parts[0] && e.marketplace === parts[1]
+      }),
     isChannelsEnabled: () => mockChannelsEnabled,
   }))
 })
 
 afterEach(() => {
   mock.restore()
+  setAllowedChannels([])
 })
 
 // Dynamic import to pick up mocks — bust module cache each time
@@ -128,9 +134,7 @@ describe('gateChannelServer — capability check', () => {
   test('passes servers with claude/channel: {} capability', async () => {
     const { gateChannelServer } = await loadModule()
     // Pre-add an allowed channel entry
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' }])
     const result = gateChannelServer('plugin:telegram:abc', CHANNEL_CAP, 'telegram@claude-plugins-official')
     expect(result.action).toBe('register')
   })
@@ -157,9 +161,7 @@ describe('gateChannelServer — runtime disabled', () => {
 describe('gateChannelServer — approved plugin path', () => {
   test('registers an approved plugin that is in --channels list', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' }])
     const result = gateChannelServer(
       'plugin:telegram:abc',
       CHANNEL_CAP,
@@ -168,19 +170,38 @@ describe('gateChannelServer — approved plugin path', () => {
     expect(result.action).toBe('register')
   })
 
-  test('skips an approved plugin NOT in --channels list (no auto-registration)', async () => {
+  test('auto-registers an approved plugin NOT in --channels list', async () => {
     const { gateChannelServer } = await loadModule()
     // Plugin is on the hardcoded allowlist but NOT in --channels
-    mockAllowedChannels = []
+    // Should auto-register via setAllowedChannels()
+    setAllowedChannels([])
     const result = gateChannelServer(
       'plugin:telegram:abc',
       CHANNEL_CAP,
       'telegram@claude-plugins-official',
     )
-    expect(result.action).toBe('skip')
-    expect((result as any).kind).toBe('session')
-    // Verify no auto-registration occurred
-    expect(mockAllowedChannels).toHaveLength(0)
+    expect(result.action).toBe('register')
+    // Verify auto-registration added the entry
+    expect(getAllowedChannels()).toHaveLength(1)
+    expect(getAllowedChannels()[0]).toEqual({
+      kind: 'plugin',
+      name: 'telegram',
+      marketplace: 'claude-plugins-official',
+      dev: false,
+    })
+  })
+
+  test('registers an approved plugin that is already in --channels list', async () => {
+    const { gateChannelServer } = await loadModule()
+    setAllowedChannels([{ kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' }])
+    const result = gateChannelServer(
+      'plugin:telegram:abc',
+      CHANNEL_CAP,
+      'telegram@claude-plugins-official',
+    )
+    expect(result.action).toBe('register')
+    // Verify no duplicate entry added
+    expect(getAllowedChannels()).toHaveLength(1)
   })
 })
 
@@ -192,9 +213,7 @@ describe('gateChannelServer — non-allowlisted plugin', () => {
   test('skips a plugin not on the approved allowlist', async () => {
     const { gateChannelServer } = await loadModule()
     // Plugin in session list but NOT in hardcoded allowlist
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'evil-chat', marketplace: 'evil-marketplace' },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'evil-chat', marketplace: 'evil-marketplace' }])
     const result = gateChannelServer(
       'plugin:evil-chat:xyz',
       CHANNEL_CAP,
@@ -206,7 +225,7 @@ describe('gateChannelServer — non-allowlisted plugin', () => {
 
   test('does not auto-register a non-allowlisted plugin', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = []
+    setAllowedChannels([])
     const result = gateChannelServer(
       'plugin:evil-chat:xyz',
       CHANNEL_CAP,
@@ -214,14 +233,12 @@ describe('gateChannelServer — non-allowlisted plugin', () => {
     )
     expect(result.action).toBe('skip')
     expect((result as any).kind).toBe('session')
-    expect(mockAllowedChannels).toHaveLength(0)
+    expect(getAllowedChannels()).toHaveLength(0)
   })
 
   test('non-allowlisted plugin with dev flag DOES register', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'custom-chat', marketplace: 'my-marketplace', dev: true },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'custom-chat', marketplace: 'my-marketplace', dev: true }])
     const result = gateChannelServer(
       'plugin:custom-chat:xyz',
       CHANNEL_CAP,
@@ -238,9 +255,7 @@ describe('gateChannelServer — non-allowlisted plugin', () => {
 describe('gateChannelServer — marketplace verification', () => {
   test('rejects when installed marketplace does not match entry', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' }])
     // pluginSource says "evil-marketplace" but entry expects "claude-plugins-official"
     const result = gateChannelServer(
       'plugin:telegram:abc',
@@ -253,9 +268,7 @@ describe('gateChannelServer — marketplace verification', () => {
 
   test('rejects when pluginSource has no marketplace (@-less)', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' }])
     const result = gateChannelServer(
       'plugin:telegram:abc',
       CHANNEL_CAP,
@@ -273,7 +286,7 @@ describe('gateChannelServer — marketplace verification', () => {
 describe('gateChannelServer — server-kind entries', () => {
   test('rejects server-kind entry WITHOUT dev flag', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [{ kind: 'server', name: 'my-bridge' }]
+    setAllowedChannels([{ kind: 'server', name: 'my-bridge' }])
     const result = gateChannelServer('my-bridge', CHANNEL_CAP, undefined)
     expect(result.action).toBe('skip')
     expect((result as any).kind).toBe('allowlist')
@@ -284,7 +297,7 @@ describe('gateChannelServer — server-kind entries', () => {
 
   test('registers server-kind entry WITH dev flag', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [{ kind: 'server', name: 'my-bridge', dev: true }]
+    setAllowedChannels([{ kind: 'server', name: 'my-bridge', dev: true }])
     const result = gateChannelServer('my-bridge', CHANNEL_CAP, undefined)
     expect(result.action).toBe('register')
   })
@@ -293,7 +306,7 @@ describe('gateChannelServer — server-kind entries', () => {
     const { gateChannelServer } = await loadModule()
     // "my-bridge" is not on the hardcoded plugin allowlist — doesn't matter,
     // server-kind with dev=true bypasses the plugin allowlist entirely
-    mockAllowedChannels = [{ kind: 'server', name: 'my-bridge', dev: true }]
+    setAllowedChannels([{ kind: 'server', name: 'my-bridge', dev: true }])
     const result = gateChannelServer('my-bridge', CHANNEL_CAP, undefined)
     expect(result.action).toBe('register')
   })
@@ -306,9 +319,7 @@ describe('gateChannelServer — server-kind entries', () => {
 describe('gateChannelServer — dev channel path', () => {
   test('dev plugin bypasses allowlist entirely', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'my-custom', marketplace: 'my-custom-marketplace', dev: true },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'my-custom', marketplace: 'my-custom-marketplace', dev: true }])
     const result = gateChannelServer(
       'plugin:my-custom:abc',
       CHANNEL_CAP,
@@ -319,9 +330,7 @@ describe('gateChannelServer — dev channel path', () => {
 
   test('dev plugin still requires marketplace match', async () => {
     const { gateChannelServer } = await loadModule()
-    mockAllowedChannels = [
-      { kind: 'plugin', name: 'my-custom', marketplace: 'expected-marketplace', dev: true },
-    ]
+    setAllowedChannels([{ kind: 'plugin', name: 'my-custom', marketplace: 'expected-marketplace', dev: true }])
     const result = gateChannelServer(
       'plugin:my-custom:abc',
       CHANNEL_CAP,
