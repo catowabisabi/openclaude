@@ -1,9 +1,8 @@
-import { feature } from 'bun:bundle';
 import { appendFileSync } from 'fs';
 import React from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
-import { type ChannelEntry, getAllowedChannels, setAllowedChannels, setHasDevChannels, setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
+import { type ChannelEntry, getAllowedChannels, setAllowedChannels, setChannelModeEnabled, setHasDevChannels, setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
 import type { Command } from './commands.js';
 import { createStatsStore, type StatsStore } from './context/stats.js';
 import { getSystemContext } from './context.js';
@@ -183,7 +182,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
   // Track current repo path for teleport directory switching (fire-and-forget)
   // This must happen AFTER trust to prevent untrusted directories from poisoning the mapping
   void updateGithubRepoPathMapping();
-  if (feature('LODESTONE')) {
+  if (false) {
     updateDeepLinkTerminalPreference();
   }
 
@@ -231,7 +230,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     } = await import('./components/BypassPermissionsModeDialog.js');
     await showSetupDialog(root, done => <BypassPermissionsModeDialog onAccept={done} />);
   }
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     // Only show the opt-in dialog if auto mode actually resolved — if the
     // gate denied it (org not allowlisted, settings disabled), showing
     // consent for an unavailable feature is pointless. The
@@ -266,6 +265,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
           dev: true
         }))]);
         setHasDevChannels(true);
+        setChannelModeEnabled(true);
       } else {
         const {
           DevChannelsDialog
@@ -278,6 +278,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
             dev: true
           }))]);
           setHasDevChannels(true);
+          setChannelModeEnabled(true);
           void done();
         }} />);
       }

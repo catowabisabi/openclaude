@@ -20,7 +20,9 @@ import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js'
 import type { ChannelEntry } from '../../bootstrap/state.js'
 import {
   getAllowedChannels,
+  getChannelModeEnabled,
   setAllowedChannels,
+  setChannelModeEnabled,
 } from '../../bootstrap/state.js'
 
 // ---------------------------------------------------------------------------
@@ -109,6 +111,48 @@ describe('findChannelEntry', () => {
     ]
     // bare name "telegram" should NOT match a plugin entry
     expect(findChannelEntry('telegram', channels)).toBeUndefined()
+  })
+
+  test('matches plugin by name AND marketplace when pluginSource is given', async () => {
+    const { findChannelEntry } = await loadModule()
+    const channels: ChannelEntry[] = [
+      { kind: 'plugin', name: 'telegram', marketplace: 'my-marketplace' },
+      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
+    ]
+    // Should prefer the entry whose marketplace matches the installed plugin source
+    const result = findChannelEntry('plugin:telegram:abc', channels, 'telegram@claude-plugins-official')
+    expect(result).toBe(channels[1])
+  })
+
+  test('falls back to name-only match when pluginSource marketplace does not match any entry', async () => {
+    const { findChannelEntry } = await loadModule()
+    const channels: ChannelEntry[] = [
+      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
+    ]
+    // pluginSource marketplace 'other-marketplace' does not match the entry,
+    // but name-only fallback should still pick it up
+    const result = findChannelEntry('plugin:telegram:abc', channels, 'telegram@other-marketplace')
+    expect(result).toBe(channels[0])
+  })
+
+  test('marketplace match is ignored when pluginSource has no marketplace', async () => {
+    const { findChannelEntry } = await loadModule()
+    const channels: ChannelEntry[] = [
+      { kind: 'plugin', name: 'telegram', marketplace: 'claude-plugins-official' },
+    ]
+    // No @ sign means no marketplace parsing; fallback to name-only
+    const result = findChannelEntry('plugin:telegram:abc', channels, 'telegram')
+    expect(result).toBe(channels[0])
+  })
+
+  test('marketplace matching does not affect server-kind entries', async () => {
+    const { findChannelEntry } = await loadModule()
+    const channels: ChannelEntry[] = [
+      { kind: 'server', name: 'my-bridge' },
+    ]
+    // pluginSource is irrelevant for server-kind entries
+    const result = findChannelEntry('my-bridge', channels, 'telegram@claude-plugins-official')
+    expect(result).toBe(channels[0])
   })
 })
 
@@ -338,5 +382,33 @@ describe('gateChannelServer — dev channel path', () => {
     )
     expect(result.action).toBe('skip')
     expect((result as any).kind).toBe('marketplace')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// channelModeEnabled — dev channel state
+// ---------------------------------------------------------------------------
+
+describe('channelModeEnabled — dev channel state', () => {
+  test('setChannelModeEnabled propagates to getChannelModeEnabled', async () => {
+    expect(getChannelModeEnabled()).toBe(false)
+    setChannelModeEnabled(true)
+    expect(getChannelModeEnabled()).toBe(true)
+    setChannelModeEnabled(false)
+    expect(getChannelModeEnabled()).toBe(false)
+  })
+
+  test('accepting dev channels (simulated) enables channel mode', async () => {
+    // Simulate what interactiveHelpers does on dev channel accept
+    expect(getChannelModeEnabled()).toBe(false)
+    setAllowedChannels([{ kind: 'plugin', name: 'my-custom', marketplace: 'my-marketplace', dev: true }])
+    setChannelModeEnabled(true)
+    expect(getChannelModeEnabled()).toBe(true)
+    // With channel mode on, gateChannelServer should register the dev plugin
+    const { gateChannelServer } = await loadModule()
+    const result = gateChannelServer('plugin:my-custom:abc', CHANNEL_CAP, 'my-custom@my-marketplace')
+    expect(result.action).toBe('register')
+    // Reset for subsequent tests
+    setChannelModeEnabled(false)
   })
 })

@@ -10,7 +10,7 @@
  * The model sees where the message came from and decides which tool to reply
  * with (the channel's MCP tool, SendUserMessage, or both).
  *
- * feature('KAIROS') || feature('KAIROS_CHANNELS') (replaced with true in
+ * false || true (replaced with true in
  * OpenClaude build). Runtime gate via isChannelsEnabled() — always true
  * in OpenClaude. No OAuth or org policy requirement.
  *
@@ -162,10 +162,25 @@ export type ChannelGateResult =
 export function findChannelEntry(
   serverName: string,
   channels: readonly ChannelEntry[],
+  pluginSource?: string,
 ): ChannelEntry | undefined {
   // split unconditionally — for a bare name like 'slack', parts is ['slack']
   // and the plugin-kind branch correctly never matches (parts[0] !== 'plugin').
   const parts = serverName.split(':')
+  // When pluginSource is available and we're matching a plugin entry,
+  // try to find an exact match on both plugin name AND marketplace.
+  // This prevents a valid installed plugin from being rejected when
+  // two entries share the same plugin name but come from different marketplaces.
+  if (pluginSource && parts[0] === 'plugin') {
+    const parsed = parsePluginIdentifier(pluginSource)
+    if (parsed.name && parsed.marketplace) {
+      const exactMatch = channels.find(c =>
+        c.kind === 'plugin' && parts[1] === c.name && c.marketplace === parsed.marketplace,
+      )
+      if (exactMatch) return exactMatch
+    }
+  }
+  // Fallback to name-only matching (original behaviour).
   return channels.find(c =>
     c.kind === 'server'
       ? serverName === c.name
@@ -175,7 +190,7 @@ export function findChannelEntry(
 
 /**
  * Gate an MCP server's channel-notification path. Caller checks
- * feature('KAIROS') || feature('KAIROS_CHANNELS') first (build-time
+ * false || true first (build-time
  * elimination). Gate order: capability → runtime gate (isChannelsEnabled) →
  * session --channels → marketplace verification → allowlist.
  *
@@ -231,7 +246,7 @@ export function gateChannelServer(
   // server surprise-adding the capability.
   // OpenClaude: allowlisted channel plugins auto-register when they connect,
   // so users don't need the --channels flag for approved plugins.
-  let entry = findChannelEntry(serverName, getAllowedChannels())
+  let entry = findChannelEntry(serverName, getAllowedChannels(), pluginSource)
   if (!entry && pluginSource && isChannelAllowlisted(pluginSource)) {
     const parsed = parsePluginIdentifier(pluginSource)
     if (parsed.name && parsed.marketplace) {
@@ -242,7 +257,7 @@ export function gateChannelServer(
         dev: false,
       }
       setAllowedChannels([...getAllowedChannels(), autoEntry])
-      entry = findChannelEntry(serverName, getAllowedChannels())
+      entry = findChannelEntry(serverName, getAllowedChannels(), pluginSource)
     }
   }
   if (!entry) {
